@@ -1,0 +1,44 @@
+# Rust build artifacts
+/target/
+**/*.rs.bk
+*.pdb
+
+# Cargo (keep Cargo.lock for reproducible builds)
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment files
+.env
+.env.local
+.env.*.local
+.env.test.*
+.env.test
+.env.production.*
+.env.production
+.env.staging.*
+.env.staging
+.env.development.*
+.env.development
+
+
+# MacOS
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Test coverage
+coverage/
+*.lcov
+
+# Local development
+.local/
+tmp/
+
+/dev-docs/*

@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vibe DevOps Admin</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        [x-cloak] { display: none !important; }
+        .table-container { max-height: calc(100vh - 300px); overflow-y: auto; }
+        .json-cell { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .json-cell:hover { white-space: pre-wrap; overflow: visible; position: relative; z-index: 10; background: #1f2937; padding: 8px; border-radius: 4px; }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+    <div id="app" class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-white">🚀 Vibe DevOps Admin</h1>
+            <p class="text-gray-400 mt-1">Database administration panel</p>
+        </div>
+
+        <!-- Stats Dashboard -->
+        <div id="dashboard" class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+            <!-- Stats cards will be populated by JS -->
+        </div>
+
+        <!-- Navigation -->
+        <div class="flex flex-wrap gap-2 mb-6">
+            <button onclick="loadTable('users')" class="nav-btn px-4 py-2 rounded-lg bg-gray-700 hover:bg-blue-600 transition-colors" data-table="users">
+                👤 Users
+            </button>
+            <button onclick="loadTable('social-identifiers')" class="nav-btn px-4 py-2 rounded-lg bg-gray-700 hover:bg-blue-600 transition-colors" data-table="social-identifiers">
+                🔗 Social Identifiers
+            </button>
+            <button onclick="loadTable('user-passwords')" class="nav-btn px-4 py-2 rounded-lg bg-gray-700 hover:bg-blue-600 transition-colors" data-table="user-passwords">
+                🔐 Passwords
+            </button>
+            <button onclick="loadTable('session-tokens')" class="nav-btn px-4 py-2 rounded-lg bg-gray-700 hover:bg-blue-600 transition-colors" data-table="session-tokens">
+                🎫 Sessions
+            </button>
+            <button onclick="loadTable('refresh-tokens')" class="nav-btn px-4 py-2 rounded-lg bg-gray-700 hover:bg-blue-600 transition-colors" data-table="refresh-tokens">
+                🔄 Refresh Tokens
+            </button>
+        </div>
+
+        <!-- Table Section -->
+        <div id="table-section" class="bg-gray-800 rounded-lg p-6 hidden">
+            <div class="flex justify-between items-center mb-4">
+                <h2 id="table-title" class="text-xl font-semibold"></h2>
+                <div class="flex items-center gap-4">
+                    <label class="text-sm text-gray-400">
+                        Per page:
+                        <select id="per-page" onchange="changePage(1)" class="ml-2 bg-gray-700 rounded px-2 py-1">
+                            <option value="10">10</option>
+                            <option value="25" selected>25</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Table Container -->
+            <div class="table-container overflow-x-auto">
+                <table id="data-table" class="w-full text-sm">
+                    <thead id="table-head" class="bg-gray-700 sticky top-0">
+                        <!-- Headers populated by JS -->
+                    </thead>
+                    <tbody id="table-body" class="divide-y divide-gray-700">
+                        <!-- Data populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Pagination -->
+            <div id="pagination" class="flex justify-between items-center mt-4 pt-4 border-t border-gray-700">
+                <div id="pagination-info" class="text-sm text-gray-400"></div>
+                <div class="flex gap-2">
+                    <button onclick="prevPage()" id="prev-btn" class="px-3 py-1 rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed">
+                        ← Prev
+                    </button>
+                    <span id="page-indicator" class="px-3 py-1 text-gray-400"></span>
+                    <button onclick="nextPage()" id="next-btn" class="px-3 py-1 rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed">
+                        Next →
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading State -->
+        <div id="loading" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div class="bg-gray-800 rounded-lg p-6 flex items-center gap-3">
+                <svg class="animate-spin h-6 w-6 text-blue-500" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span>Loading...</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // State
+        let currentTable = null;
+        let currentPage = 1;
+        let pagination = null;
+
+        // Table configurations
+        const tableConfigs = {
+            'users': {
+                title: '👤 Users',
+                endpoint: '/api/admin/users',
+                columns: ['id', 'display_name', 'avatar_url', 'status', 'metadata', 'created_at', 'updated_at', 'deleted_at']
+            },
+            'social-identifiers': {
+                title: '🔗 Social Identifiers',
+                endpoint: '/api/admin/social-identifiers',
+                columns: ['id', 'user_id', 'identifier_type', 'identifier_value', 'verified', 'is_primary', 'metadata', 'created_at']
+            },
+            'user-passwords': {
+                title: '🔐 User Passwords',
+                endpoint: '/api/admin/user-passwords',
+                columns: ['user_id', 'password_hash', 'created_at', 'updated_at']
+            },
+            'session-tokens': {
+                title: '🎫 Session Tokens',
+                endpoint: '/api/admin/session-tokens',
+                columns: ['id', 'user_id', 'token_hash', 'device_info', 'ip_address', 'user_agent', 'expires_at', 'revoked_at', 'last_used_at', 'created_at']
+            },
+            'refresh-tokens': {
+                title: '🔄 Refresh Tokens',
+                endpoint: '/api/admin/refresh-tokens',
+                columns: ['id', 'user_id', 'token_hash', 'session_id', 'family_id', 'generation', 'ip_address', 'expires_at', 'revoked_at', 'created_at']
+            }
+        };
+
+        // Load dashboard stats
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/admin/stats');
+                const stats = await response.json();
+                
+                const dashboard = document.getElementById('dashboard');
+                dashboard.innerHTML = `
+                    <div class="bg-gray-800 rounded-lg p-4 cursor-pointer hover:bg-gray-700 transition-colors" onclick="loadTable('users')">
+                        <div class="text-2xl font-bold text-blue-400">${stats.users.toLocaleString()}</div>
+                        <div class="text-sm text-gray-400">Users</div>
+                    </div>
+                    <div class="bg-gray-800 rounded-lg p-4 cursor-pointer hover:bg-gray-700 transition-colors" onclick="loadTable('social-identifiers')">
+                        <div class="text-2xl font-bold text-green-400">${stats.social_identifiers.toLocaleString()}</div>
+                        <div class="text-sm text-gray-400">Identifiers</div>
+                    </div>
+                    <div class="bg-gray-800 rounded-lg p-4 cursor-pointer hover:bg-gray-700 transition-colors" onclick="loadTable('user-passwords')">
+                        <div class="text-2xl font-bold text-yellow-400">${stats.user_passwords.toLocaleString()}</div>
+                        <div class="text-sm text-gray-400">Passwords</div>
+                    </div>
+                    <div class="bg-gray-800 rounded-lg p-4 cursor-pointer hover:bg-gray-700 transition-colors" onclick="loadTable('session-tokens')">
+                        <div class="text-2xl font-bold text-purple-400">${stats.session_tokens.toLocaleString()}</div>
+                        <div class="text-sm text-gray-400">Sessions</div>
+                    </div>
+                    <div class="bg-gray-800 rounded-lg p-4 cursor-pointer hover:bg-gray-700 transition-colors" onclick="loadTable('refresh-tokens')">
+                        <div class="text-2xl font-bold text-pink-400">${stats.refresh_tokens.toLocaleString()}</div>
+                        <div class="text-sm text-gray-400">Refresh Tokens</div>
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Failed to load stats:', error);
+            }
+        }
+
+        // Load table data
+        async function loadTable(tableName) {
+            currentTable = tableName;
+            currentPage = 1;
+            await fetchTableData();
+            
+            // Update nav button styles
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.classList.remove('bg-blue-600');
+                btn.classList.add('bg-gray-700');
+            });
+            document.querySelector(`[data-table="${tableName}"]`)?.classList.add('bg-blue-600');
+            document.querySelector(`[data-table="${tableName}"]`)?.classList.remove('bg-gray-700');
+        }
+
+        async function fetchTableData() {
+            if (!currentTable) return;
+
+            const config = tableConfigs[currentTable];
+            const perPage = document.getElementById('per-page').value;
+            
+            showLoading(true);
+
+            try {
+                const response = await fetch(`${config.endpoint}?page=${currentPage}&per_page=${perPage}`);
+                const result = await response.json();
+
+                pagination = result.pagination;
+                renderTable(config, result.data);
+                updatePagination();
+                
+                document.getElementById('table-section').classList.remove('hidden');
+            } catch (error) {
+                console.error('Failed to load table:', error);
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function renderTable(config, data) {
+            document.getElementById('table-title').textContent = config.title;
+
+            // Render headers
+            const thead = document.getElementById('table-head');
+            thead.innerHTML = `<tr>${config.columns.map(col => 
+                `<th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">${col.replace(/_/g, ' ')}</th>`
+            ).join('')}</tr>`;
+
+            // Render body
+            const tbody = document.getElementById('table-body');
+            if (data.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="${config.columns.length}" class="px-4 py-8 text-center text-gray-500">No data found</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = data.map(row => `
+                <tr class="hover:bg-gray-750">
+                    ${config.columns.map(col => `<td class="px-4 py-3 ${isJsonColumn(col) ? 'json-cell' : ''}">${formatValue(row[col], col)}</td>`).join('')}
+                </tr>
+            `).join('');
+        }
+
+        function isJsonColumn(col) {
+            return ['metadata', 'device_info'].includes(col);
+        }
+
+        function formatValue(value, column) {
+            if (value === null || value === undefined) {
+                return '<span class="text-gray-500">null</span>';
+            }
+            
+            if (typeof value === 'boolean') {
+                return value 
+                    ? '<span class="text-green-400">✓</span>' 
+                    : '<span class="text-red-400">✗</span>';
+            }
+            
+            if (typeof value === 'object') {
+                return `<code class="text-xs text-gray-400">${JSON.stringify(value)}</code>`;
+            }
+            
+            // Truncate long strings
+            if (typeof value === 'string') {
+                // Format dates
+                if (column.includes('_at') && value.includes('T')) {
+                    const date = new Date(value);
+                    return `<span class="text-gray-300">${date.toLocaleString()}</span>`;
+                }
+                
+                // Truncate hashes
+                if (column.includes('hash') || column.includes('_id')) {
+                    if (value.length > 20) {
+                        return `<span class="font-mono text-xs" title="${value}">${value.substring(0, 8)}...${value.substring(value.length - 4)}</span>`;
+                    }
+                }
+                
+                if (value.length > 50) {
+                    return `<span title="${value}">${value.substring(0, 47)}...</span>`;
+                }
+            }
+            
+            return value;
+        }
+
+        function updatePagination() {
+            if (!pagination) return;
+
+            document.getElementById('pagination-info').textContent = 
+                `Showing ${((pagination.page - 1) * pagination.per_page) + 1} - ${Math.min(pagination.page * pagination.per_page, pagination.total_items)} of ${pagination.total_items.toLocaleString()}`;
+            
+            document.getElementById('page-indicator').textContent = 
+                `Page ${pagination.page} of ${pagination.total_pages}`;
+
+            document.getElementById('prev-btn').disabled = !pagination.has_prev;
+            document.getElementById('next-btn').disabled = !pagination.has_next;
+        }
+
+        function prevPage() {
+            if (pagination?.has_prev) {
+                currentPage--;
+                fetchTableData();
+            }
+        }
+
+        function nextPage() {
+            if (pagination?.has_next) {
+                currentPage++;
+                fetchTableData();
+            }
+        }
+
+        function changePage(page) {
+            currentPage = page;
+            fetchTableData();
+        }
+
+        function showLoading(show) {
+            document.getElementById('loading').classList.toggle('hidden', !show);
+        }
+
+        // Initialize
+        loadStats();
+    </script>
+</body>
+</html>
