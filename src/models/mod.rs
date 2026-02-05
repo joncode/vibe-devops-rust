@@ -1,11 +1,10 @@
-//! Data models for the application
-
+pub mod agent;
 pub mod hex_id;
-pub mod user;
-pub mod session;
 pub mod identifier;
-
+pub mod session;
+pub mod user;
+pub use agent::*;
 pub use hex_id::*;
-pub use user::*;
-pub use session::*;
 pub use identifier::*;
+pub use session::*;
+pub use user::*;
