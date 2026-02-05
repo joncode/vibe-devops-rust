@@ -42,3 +42,4 @@ coverage/
 tmp/
 
 /dev-docs/*
+!/dev-docs/specs/
