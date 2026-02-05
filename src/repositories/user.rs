@@ -4,7 +4,7 @@ use anyhow::Result;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::models::{User, UserStatus};
+use crate::models::{User, UserStatus, HexId};
 
 /// User repository
 pub struct UserRepository<'a> {
@@ -18,16 +18,34 @@ impl<'a> UserRepository<'a> {
 
     /// Create a new user
     pub async fn create(&self, display_name: Option<&str>) -> Result<User> {
+        let hex_id = User::generate_hex_id();
+        
         let user = sqlx::query_as::<_, User>(
             r#"
-            INSERT INTO app_users (display_name, status)
-            VALUES ($1, $2)
+            INSERT INTO app_users (hex_id, display_name, status)
+            VALUES ($1, $2, $3)
             RETURNING *
             "#
         )
+        .bind(&hex_id)
         .bind(display_name)
         .bind(UserStatus::Pending)
         .fetch_one(self.pool)
+        .await?;
+
+        Ok(user)
+    }
+    
+    /// Find user by hex_id (public ID)
+    pub async fn find_by_hex_id(&self, hex_id: &str) -> Result<Option<User>> {
+        let user = sqlx::query_as::<_, User>(
+            r#"
+            SELECT * FROM app_users
+            WHERE hex_id = $1 AND deleted_at IS NULL
+            "#
+        )
+        .bind(hex_id)
+        .fetch_optional(self.pool)
         .await?;
 
         Ok(user)

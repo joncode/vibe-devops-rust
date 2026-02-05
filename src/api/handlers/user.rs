@@ -81,13 +81,16 @@ pub async fn get_sessions(
     
     let responses: Vec<SessionResponse> = sessions
         .into_iter()
-        .map(|s| SessionResponse {
-            id: s.id,
-            device_info: s.device_info,
-            ip_address: s.ip_address,
-            last_used_at: s.last_used_at,
-            created_at: s.created_at,
-            is_current: s.id == user.session_id,
+        .map(|s| {
+            let is_current = s.id == user.session_id;
+            SessionResponse {
+                id: s.hex_id,  // Use hex_id as public ID
+                device_info: s.device_info,
+                ip_address: s.ip_address,
+                last_used_at: s.last_used_at,
+                created_at: s.created_at,
+                is_current,
+            }
         })
         .collect();
 

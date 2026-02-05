@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
+use super::hex_id::HexId;
+
 /// User status enum
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(type_name = "user_status", rename_all = "lowercase")]
@@ -26,6 +28,7 @@ impl Default for UserStatus {
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct User {
     pub id: Uuid,
+    pub hex_id: String,
     pub display_name: Option<String>,
     pub avatar_url: Option<String>,
     pub metadata: serde_json::Value,
@@ -35,10 +38,16 @@ pub struct User {
     pub deleted_at: Option<DateTime<Utc>>,
 }
 
+/// User hex_id prefix
+impl HexId for User {
+    const PREFIX: &'static str = "usr";
+}
+
 /// User for API responses (excludes sensitive fields)
+/// Uses hex_id as the public identifier instead of internal UUID
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserResponse {
-    pub id: Uuid,
+    pub id: String,  // hex_id, not UUID
     pub display_name: Option<String>,
     pub avatar_url: Option<String>,
     pub status: UserStatus,
@@ -48,7 +57,7 @@ pub struct UserResponse {
 impl From<User> for UserResponse {
     fn from(user: User) -> Self {
         Self {
-            id: user.id,
+            id: user.hex_id,  // expose hex_id as "id" in API
             display_name: user.display_name,
             avatar_url: user.avatar_url,
             status: user.status,

@@ -4,7 +4,7 @@ use anyhow::Result;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::models::{IdentifierType, SocialIdentifier};
+use crate::models::{IdentifierType, SocialIdentifier, HexId};
 
 /// Identifier repository
 pub struct IdentifierRepository<'a> {
@@ -24,18 +24,36 @@ impl<'a> IdentifierRepository<'a> {
         identifier_value: &str,
         is_primary: bool,
     ) -> Result<SocialIdentifier> {
+        let hex_id = SocialIdentifier::generate_hex_id();
+        
         let identifier = sqlx::query_as::<_, SocialIdentifier>(
             r#"
-            INSERT INTO app_social_identifiers (user_id, identifier_type, identifier_value, is_primary)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO app_social_identifiers (hex_id, user_id, identifier_type, identifier_value, is_primary)
+            VALUES ($1, $2, $3, $4, $5)
             RETURNING *
             "#
         )
+        .bind(&hex_id)
         .bind(user_id)
         .bind(&identifier_type)
         .bind(identifier_value.to_lowercase())
         .bind(is_primary)
         .fetch_one(self.pool)
+        .await?;
+
+        Ok(identifier)
+    }
+    
+    /// Find identifier by hex_id (public ID)
+    pub async fn find_by_hex_id(&self, hex_id: &str) -> Result<Option<SocialIdentifier>> {
+        let identifier = sqlx::query_as::<_, SocialIdentifier>(
+            r#"
+            SELECT * FROM app_social_identifiers
+            WHERE hex_id = $1 AND deleted_at IS NULL
+            "#
+        )
+        .bind(hex_id)
+        .fetch_optional(self.pool)
         .await?;
 
         Ok(identifier)
@@ -50,7 +68,9 @@ impl<'a> IdentifierRepository<'a> {
         let identifier = sqlx::query_as::<_, SocialIdentifier>(
             r#"
             SELECT * FROM app_social_identifiers
-            WHERE identifier_type = $1 AND identifier_value = $2
+            WHERE identifier_type = $1 
+              AND identifier_value = $2 
+              AND deleted_at IS NULL
             "#
         )
         .bind(&identifier_type)
@@ -66,7 +86,7 @@ impl<'a> IdentifierRepository<'a> {
         let identifiers = sqlx::query_as::<_, SocialIdentifier>(
             r#"
             SELECT * FROM app_social_identifiers
-            WHERE user_id = $1
+            WHERE user_id = $1 AND deleted_at IS NULL
             ORDER BY is_primary DESC, created_at ASC
             "#
         )
@@ -137,12 +157,13 @@ impl<'a> IdentifierRepository<'a> {
         }
     }
 
-    /// Delete an identifier
+    /// Soft-delete an identifier
     pub async fn delete(&self, id: Uuid, user_id: Uuid) -> Result<bool> {
         let result = sqlx::query(
             r#"
-            DELETE FROM app_social_identifiers
-            WHERE id = $1 AND user_id = $2
+            UPDATE app_social_identifiers
+            SET deleted_at = NOW(), updated_at = NOW()
+            WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
             "#
         )
         .bind(id)
@@ -152,14 +173,33 @@ impl<'a> IdentifierRepository<'a> {
 
         Ok(result.rows_affected() > 0)
     }
+    
+    /// Soft-delete an identifier by hex_id
+    pub async fn delete_by_hex_id(&self, hex_id: &str, user_id: Uuid) -> Result<bool> {
+        let result = sqlx::query(
+            r#"
+            UPDATE app_social_identifiers
+            SET deleted_at = NOW(), updated_at = NOW()
+            WHERE hex_id = $1 AND user_id = $2 AND deleted_at IS NULL
+            "#
+        )
+        .bind(hex_id)
+        .bind(user_id)
+        .execute(self.pool)
+        .await?;
 
-    /// Check if identifier exists
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Check if identifier exists (and is not deleted)
     pub async fn exists(&self, identifier_type: IdentifierType, identifier_value: &str) -> Result<bool> {
         let exists: (bool,) = sqlx::query_as(
             r#"
             SELECT EXISTS(
                 SELECT 1 FROM app_social_identifiers
-                WHERE identifier_type = $1 AND identifier_value = $2
+                WHERE identifier_type = $1 
+                  AND identifier_value = $2 
+                  AND deleted_at IS NULL
             )
             "#
         )

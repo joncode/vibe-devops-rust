@@ -5,7 +5,7 @@ use chrono::{Duration, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::models::SessionToken;
+use crate::models::{SessionToken, HexId};
 
 /// Session repository
 pub struct SessionRepository<'a> {
@@ -27,15 +27,17 @@ impl<'a> SessionRepository<'a> {
         user_agent: Option<&str>,
         expires_in_days: i64,
     ) -> Result<SessionToken> {
+        let hex_id = SessionToken::generate_hex_id();
         let expires_at = Utc::now() + Duration::days(expires_in_days);
 
         let session = sqlx::query_as::<_, SessionToken>(
             r#"
-            INSERT INTO app_session_tokens (user_id, token_hash, device_info, ip_address, user_agent, expires_at)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO app_session_tokens (hex_id, user_id, token_hash, device_info, ip_address, user_agent, expires_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING *
             "#
         )
+        .bind(&hex_id)
         .bind(user_id)
         .bind(token_hash)
         .bind(&device_info)
@@ -47,13 +49,31 @@ impl<'a> SessionRepository<'a> {
 
         Ok(session)
     }
+    
+    /// Find session by hex_id (public ID)
+    pub async fn find_by_hex_id(&self, hex_id: &str) -> Result<Option<SessionToken>> {
+        let session = sqlx::query_as::<_, SessionToken>(
+            r#"
+            SELECT * FROM app_session_tokens
+            WHERE hex_id = $1 AND deleted_at IS NULL AND revoked_at IS NULL AND expires_at > NOW()
+            "#
+        )
+        .bind(hex_id)
+        .fetch_optional(self.pool)
+        .await?;
+
+        Ok(session)
+    }
 
     /// Find session by token hash
     pub async fn find_by_token_hash(&self, token_hash: &str) -> Result<Option<SessionToken>> {
         let session = sqlx::query_as::<_, SessionToken>(
             r#"
             SELECT * FROM app_session_tokens
-            WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > NOW()
+            WHERE token_hash = $1 
+              AND deleted_at IS NULL 
+              AND revoked_at IS NULL 
+              AND expires_at > NOW()
             "#
         )
         .bind(token_hash)
@@ -68,7 +88,10 @@ impl<'a> SessionRepository<'a> {
         let sessions = sqlx::query_as::<_, SessionToken>(
             r#"
             SELECT * FROM app_session_tokens
-            WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > NOW()
+            WHERE user_id = $1 
+              AND deleted_at IS NULL 
+              AND revoked_at IS NULL 
+              AND expires_at > NOW()
             ORDER BY created_at DESC
             "#
         )
@@ -149,7 +172,10 @@ impl<'a> SessionRepository<'a> {
         let count: (i64,) = sqlx::query_as(
             r#"
             SELECT COUNT(*) FROM app_session_tokens
-            WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > NOW()
+            WHERE user_id = $1 
+              AND deleted_at IS NULL 
+              AND revoked_at IS NULL 
+              AND expires_at > NOW()
             "#
         )
         .bind(user_id)
@@ -159,17 +185,36 @@ impl<'a> SessionRepository<'a> {
         Ok(count.0)
     }
 
-    /// Cleanup expired sessions
+    /// Soft-delete expired sessions (cleanup)
+    /// Instead of hard delete, we mark sessions as deleted
     pub async fn cleanup_expired(&self) -> Result<u64> {
         let result = sqlx::query(
             r#"
-            DELETE FROM app_session_tokens
-            WHERE expires_at < NOW() - INTERVAL '7 days'
+            UPDATE app_session_tokens
+            SET deleted_at = NOW()
+            WHERE deleted_at IS NULL 
+              AND expires_at < NOW() - INTERVAL '7 days'
             "#
         )
         .execute(self.pool)
         .await?;
 
         Ok(result.rows_affected())
+    }
+    
+    /// Soft-delete a session by ID
+    pub async fn soft_delete(&self, id: Uuid) -> Result<bool> {
+        let result = sqlx::query(
+            r#"
+            UPDATE app_session_tokens
+            SET deleted_at = NOW()
+            WHERE id = $1 AND deleted_at IS NULL
+            "#
+        )
+        .bind(id)
+        .execute(self.pool)
+        .await?;
+
+        Ok(result.rows_affected() > 0)
     }
 }
