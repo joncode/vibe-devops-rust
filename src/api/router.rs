@@ -1,7 +1,7 @@
 //! Main application router
 
 use axum::{
-    routing::{get, post},
+    routing::{delete, get, post, put},
     Router,
 };
 use tower_http::{
@@ -10,7 +10,7 @@ use tower_http::{
 };
 
 use crate::AppState;
-use super::handlers::{admin, auth, health, user};
+use super::handlers::{admin, auth, health, server, user};
 
 /// Create the main application router
 pub fn create_router(state: AppState) -> Router {
@@ -33,7 +33,17 @@ pub fn create_router(state: AppState) -> Router {
         .route("/auth/logout", post(auth::logout))
         // Users
         .route("/users/me", get(user::get_me).put(user::update_me).delete(user::delete_me))
-        .route("/users/me/sessions", get(user::get_sessions));
+        .route("/users/me/sessions", get(user::get_sessions))
+        // Servers
+        .route("/servers", get(server::list_servers).post(server::create_server))
+        .route("/servers/{id}", get(server::get_server).put(server::update_server).delete(server::delete_server))
+        .route("/servers/{id}/heartbeat", post(server::server_heartbeat))
+        .route("/servers/{id}/services", get(server::list_server_services).post(server::create_service))
+        .route("/servers/{id}/services/status", post(server::update_service_statuses))
+        // Services (global)
+        .route("/services", get(server::list_services))
+        .route("/services/unhealthy", get(server::list_unhealthy_services))
+        .route("/services/{id}", get(server::get_service).put(server::update_service).delete(server::delete_service));
 
     // Admin API routes
     let admin_api = Router::new()

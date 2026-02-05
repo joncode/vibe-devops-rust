@@ -1,11 +1,15 @@
 //! Repository layer - Database access
 
-pub mod user;
-pub mod session;
-pub mod identifier;
 pub mod admin;
+pub mod identifier;
+pub mod server;
+pub mod server_service;
+pub mod session;
+pub mod user;
 
-pub use user::*;
-pub use session::*;
-pub use identifier::*;
 pub use admin::*;
+pub use identifier::*;
+pub use server::*;
+pub use server_service::*;
+pub use session::*;
+pub use user::*;
