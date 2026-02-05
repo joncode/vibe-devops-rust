@@ -10,7 +10,7 @@ use tower_http::{
 };
 
 use crate::AppState;
-use super::handlers::{admin, auth, health, user};
+use super::handlers::{admin, auth, deploy, health, user};
 
 /// Create the main application router
 pub fn create_router(state: AppState) -> Router {
@@ -33,7 +33,16 @@ pub fn create_router(state: AppState) -> Router {
         .route("/auth/logout", post(auth::logout))
         // Users
         .route("/users/me", get(user::get_me).put(user::update_me).delete(user::delete_me))
-        .route("/users/me/sessions", get(user::get_sessions));
+        .route("/users/me/sessions", get(user::get_sessions))
+        // Deploy (Deployer Agent)
+        .route("/deploy/plan", post(deploy::create_plan))
+        .route("/deploy/pr", post(deploy::create_pr))
+        .route("/deploy/status", get(deploy::list_deployments))
+        .route("/deploy/status/{deployment_id}", get(deploy::get_status))
+        .route("/deploy/{deployment_id}/cancel", post(deploy::cancel_deployment))
+        .route("/deploy/{deployment_id}/pr-merged", post(deploy::notify_pr_merged))
+        .route("/deploy/{deployment_id}/verify/start", post(deploy::start_verification))
+        .route("/deploy/{deployment_id}/verify/complete", post(deploy::complete_verification));
 
     // Admin API routes
     let admin_api = Router::new()

@@ -6,6 +6,7 @@ pub mod session;
 pub mod identifier;
 pub mod server;
 pub mod server_service;
+pub mod deployment;
 
 pub use hex_id::*;
 pub use user::*;
@@ -13,3 +14,4 @@ pub use session::*;
 pub use identifier::*;
 pub use server::*;
 pub use server_service::*;
+pub use deployment::*;
